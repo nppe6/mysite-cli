@@ -9,3 +9,12 @@
     "inquirer": "^12.3.2",
     "ora": "^5.4.1"
 ```
+
+```
+// 登录
+npm login
+// 更新版本
+npm version minor
+// 发布
+npm publish
+```
