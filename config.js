@@ -1,5 +1,5 @@
 module.exports = {
-  framework: ['koa', 'Nuxt', 'vue', 'uniapp'],
+  framework: ['koa', 'Nuxt', 'vue', 'vue_cms', 'uniapp'],
   frameworkUrl: {
     koa: 'git@gitee.com:nppe6/koa-template.git',
     vue3: 'git@gitee.com:nppe6/xy-vue-admin.git',
