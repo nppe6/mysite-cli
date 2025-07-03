@@ -17,4 +17,6 @@ npm login
 npm version minor
 // 发布
 npm publish
+// 更新
+npm update -g
 ```
