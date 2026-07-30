@@ -6,6 +6,8 @@ const readline = require('readline/promises')
 const repoRoot = path.resolve(__dirname, '..')
 const packagePath = path.join(repoRoot, 'package.json')
 const allowedReleaseTypes = new Set(['patch', 'minor', 'major'])
+const npmRegistry = 'https://registry.npmjs.org/'
+const tokenEnvKey = `npm_config_${npmRegistry.replace(/^https?:/, '')}:_authToken`
 
 const readPackage = () => JSON.parse(fs.readFileSync(packagePath, 'utf8'))
 
@@ -14,14 +16,15 @@ const formatCommand = (command, args) => [command, ...args].join(' ')
 const run = (
   command,
   args,
-  { capture = false, allowFailure = false, displayCommand } = {}
+  { capture = false, allowFailure = false, displayCommand, env } = {}
 ) => {
   console.log(`\n▶ ${displayCommand || formatCommand(command, args)}`)
 
   const result = spawnSync(command, args, {
     cwd: repoRoot,
     encoding: 'utf8',
-    stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit'
+    stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+    env: env ? { ...process.env, ...env } : process.env
   })
 
   if (result.error) {
@@ -107,21 +110,66 @@ const confirmRelease = async (message) => {
   }
 }
 
+const promptToken = async () => {
+  if (!process.stdin.isTTY) {
+    throw new Error('未提供 npm 令牌，请通过 --token 参数或 NPM_TOKEN 环境变量传入')
+  }
+
+  const prompt = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  })
+
+  try {
+    const answer = await prompt.question('\n🔑 请输入 npm 令牌（Access Token）：')
+    return answer.trim()
+  } finally {
+    prompt.close()
+  }
+}
+
+const parseArgs = (rawArgs) => {
+  const args = []
+  let token = ''
+
+  for (let index = 0; index < rawArgs.length; index += 1) {
+    const arg = rawArgs[index]
+
+    if (arg === '--token') {
+      token = (rawArgs[index + 1] || '').trim()
+      index += 1
+      continue
+    }
+
+    if (arg.startsWith('--token=')) {
+      token = arg.slice('--token='.length).trim()
+      continue
+    }
+
+    args.push(arg)
+  }
+
+  return { args, token }
+}
+
 const printHelp = () => {
   console.log(`
 用法：
-  npm run release             # 默认发布 minor 版本
-  npm run release -- patch    # 补丁版本
-  npm run release -- minor    # 次版本
-  npm run release -- major    # 主版本
+  npm run release                        # 默认发布 minor 版本（流程中输入令牌）
+  npm run release -- patch               # 补丁版本
+  npm run release -- minor               # 次版本
+  npm run release -- major               # 主版本
+  npm run release -- patch --token <令牌>  # 直接传入 npm 令牌
 
-流程：检查 Git → npm 登录与权限 → 查询线上版本 → 打包预检 → 人工确认
+令牌来源优先级：--token 参数 > NPM_TOKEN 环境变量 > 交互式输入
+
+流程：检查 Git → 令牌校验与权限 → 查询线上版本 → 打包预检 → 人工确认
       → 更新版本 → npm 发布 → 推送 Git 标签 → 验证线上版本
 `)
 }
 
 const main = async () => {
-  const args = process.argv.slice(2)
+  const { args, token: tokenArg } = parseArgs(process.argv.slice(2))
 
   if (args.includes('--help') || args.includes('-h')) {
     printHelp()
@@ -159,16 +207,26 @@ const main = async () => {
 
   const origin = originResult.stdout.trim()
 
-  let whoami = runNpm(['whoami'], { capture: true, allowFailure: true })
+  const token = tokenArg || (process.env.NPM_TOKEN || '').trim() || (await promptToken())
+
+  if (!token) {
+    throw new Error('npm 令牌不能为空')
+  }
+
+  // 令牌只通过环境变量传给 npm 子进程，不会出现在命令行日志里
+  const npmAuthEnv = { [tokenEnvKey]: token, npm_config_registry: npmRegistry }
+  const runNpmAuthed = (npmArgs, options = {}) =>
+    runNpm(npmArgs, { ...options, env: npmAuthEnv })
+
+  console.log('\n🔐 正在校验 npm 令牌...')
+  const whoami = runNpmAuthed(['whoami'], { capture: true, allowFailure: true })
 
   if (whoami.status !== 0) {
-    console.log('\n🔐 当前尚未登录 npm，开始登录...')
-    runNpm(['login'])
-    whoami = runNpm(['whoami'], { capture: true })
+    throw new Error('npm 令牌无效或已过期，请重新生成后再试')
   }
 
   const npmUser = whoami.stdout.trim()
-  const ownerResult = runNpm(['owner', 'ls', packageInfo.name], { capture: true })
+  const ownerResult = runNpmAuthed(['owner', 'ls', packageInfo.name], { capture: true })
   const owners = ownerResult.stdout
     .split(/\r?\n/)
     .map((line) => line.trim().split(/\s+/)[0])
@@ -205,7 +263,7 @@ const main = async () => {
   runNpm(['pack', '--dry-run'])
 
   console.log('\n📋 发布摘要')
-  console.log(`  npm 用户：${npmUser}`)
+  console.log(`  npm 用户：${npmUser}（令牌发布）`)
   console.log(`  Git 分支：${branch}`)
   console.log(`  Git 远程：${origin}`)
   console.log(`  线上版本：${publishedVersion}`)
@@ -231,7 +289,7 @@ const main = async () => {
   let npmPublished = false
 
   try {
-    runNpm(['publish'])
+    runNpmAuthed(['publish'])
     npmPublished = true
     runGit(['push', 'origin', branch, '--follow-tags'])
   } catch (error) {
