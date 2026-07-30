@@ -98,6 +98,18 @@ module.exports = {
         //   url: 'git@gitee.com:nppe6/nuxt-template.git'
         // }
       ]
+    },
+    {
+      name: 'monorepo',
+      label: 'Monorepo',
+      packageManager: 'bun',
+      templates: [
+        {
+          name: 'shelf-monorepo',
+          label: 'Shelf Monorepo',
+          url: 'git@codeup.aliyun.com:6a334912ebc01644c579b605/template-start/shelf-monorepo.git'
+        }
+      ]
     }
 
     // ----------------------------------------------------------
