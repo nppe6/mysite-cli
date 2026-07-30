@@ -35,7 +35,7 @@
 | --- | --- |
 | 模板分组 | 先选择前端 / 后端，再选择具体模板，交互更接近 Vite 脚手架。 |
 | 二级模板 | Koa 支持 MongoDB / MySQL 两种版本，不再把模板平铺到同一层。 |
-| 快速拉取 | 通过 `download-git-repo` 从 Gitee 仓库拉取模板代码。 |
+| 快速拉取 | 通过 `git clone --depth 1` 从 Gitee 仓库拉取模板代码，兼容 main / master 默认分支。 |
 | 命令别名 | `create` 支持别名 `crt`，日常使用更短。 |
 | 参数直达 | 支持 `-f, --framework`，例如 `koa`、`koa_mysql`、`uniapp`。 |
 
